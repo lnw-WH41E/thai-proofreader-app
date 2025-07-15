@@ -107,8 +107,8 @@ def get_analysis_result(text_to_check: str, api_key: str):
     ---
     **รูปแบบผลลัพธ์:**
     [SUMMARY_START]<สรุปใจความสำคัญ 2-3 ประโยค>[SUMMARY_END]
-    [TONE_START]<วิเคราะห์โทนโดยรวมของเนื้อหา พร้อมเหตุผล>[TONE_END]
-    [READABILITY_START]<ให้คะแนนความน่าอ่านจาก 1-10 พร้อมคำแนะนำ>[READABILITY_END]
+    [TONE_START]<วิเคราะห์โทนโดยรวมของเนื้อหา (เช่น ทางการ, เป็นกันเอง, เชิงบวก) พร้อมเหตุผล>[TONE_END]
+    [READABILITY_START]<ให้คะแนนความน่าอ่านจาก 1 ถึง 10 (1=อ่านยาก, 10=อ่านง่าย) พร้อมคำแนะนำ>[READABILITY_END]
     """
     response_text = call_gemini_api(prompt, api_key)
     if response_text:
@@ -126,6 +126,15 @@ def get_analysis_result(text_to_check: str, api_key: str):
     add_log("วิเคราะห์บทความล้มเหลว: ไม่มีการตอบกลับจาก API")
     return None, None, None
 
+# --- *** ฟังก์ชัน Callback สำหรับปุ่มล้าง *** ---
+def clear_all_states():
+    """ล้างค่า session_state ทั้งหมดที่เกี่ยวข้องกับการแสดงผล"""
+    st.session_state.input_text = ""
+    st.session_state.corrected_text = ""
+    st.session_state.explanation = ""
+    st.session_state.analysis_results = None
+
+# --- ส่วนจัดการ Session State ---
 def init_session_state():
     state_defaults = {
         'corrected_text': "", 'explanation': "", 'analysis_results': None,
@@ -141,29 +150,6 @@ init_session_state()
 with st.sidebar:
     st.title("เครื่องมือและตัวเลือก")
     
-    # --- พจนานุกรมส่วนตัว (อยู่บนสุด) ---
-    st.subheader("📚 พจนานุกรมส่วนตัว")
-    with st.form("dict_form", clear_on_submit=True):
-        new_word = st.text_input("เพิ่มคำที่ต้องการยกเว้น")
-        submitted = st.form_submit_button("เพิ่มคำ")
-        if submitted and new_word and new_word not in st.session_state.dictionary:
-            st.session_state.dictionary.add(new_word)
-            save_to_file(DICTIONARY_FILE, st.session_state.dictionary)
-            st.success(f"เพิ่มคำว่า '{new_word}'")
-                
-    if st.session_state.dictionary:
-        with st.expander("แสดง/ลบคำในพจนานุกรม"):
-            for word in sorted(list(st.session_state.dictionary)):
-                c1, c2 = st.columns([3, 1])
-                c1.write(f"- {word}")
-                if c2.button("ลบ", key=f"del_{word}", use_container_width=True):
-                    st.session_state.dictionary.remove(word)
-                    save_to_file(DICTIONARY_FILE, st.session_state.dictionary)
-                    st.rerun()
-    
-    st.divider()
-
-    # --- ส่วนตั้งค่า (พับเก็บได้) ---
     with st.expander("⚙️ ตั้งค่า API", expanded=False):
         password_input = st.text_input("รหัสผ่านสำหรับแก้ไขคีย์", type="password", key="pwd_input")
         if st.button("ปลดล็อก"):
@@ -182,19 +168,26 @@ with st.sidebar:
         )
         st.caption("รับคีย์ได้ที่ [aistudio.google.com](https://aistudio.google.com/)")
 
-    # --- ส่วนประวัติการทำงาน (Log) ---
     st.divider()
-    with st.expander("📝 ประวัติการทำงาน (Log)", expanded=False):
-        logs = load_from_file(LOG_FILE)
-        if logs:
-            log_text = "\n".join(logs[::-1]) # แสดง log ล่าสุดก่อน
-            st.text_area("Log", value=log_text, height=200, disabled=True)
-            if st.button("ล้างประวัติ"):
-                save_to_file(LOG_FILE, [])
-                st.rerun()
-        else:
-            st.info("ยังไม่มีประวัติการทำงาน")
-
+    
+    st.subheader("📚 พจนานุกรมส่วนตัว")
+    with st.form("dict_form", clear_on_submit=True):
+        new_word = st.text_input("เพิ่มคำที่ต้องการยกเว้น")
+        submitted = st.form_submit_button("เพิ่มคำ")
+        if submitted and new_word and new_word not in st.session_state.dictionary:
+            st.session_state.dictionary.add(new_word)
+            save_to_file(DICTIONARY_FILE, st.session_state.dictionary)
+            st.success(f"เพิ่มคำว่า '{new_word}'")
+                
+    if st.session_state.dictionary:
+        with st.expander("แสดง/ลบคำในพจนานุกรม"):
+            for word in sorted(list(st.session_state.dictionary)):
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"- {word}")
+                if c2.button("ลบ", key=f"del_{word}", use_container_width=True):
+                    st.session_state.dictionary.remove(word)
+                    save_to_file(DICTIONARY_FILE, st.session_state.dictionary)
+                    st.rerun()
 
 st.title("✍️ ผู้ช่วยนักเขียน AI อัจฉริยะ")
 st.markdown("พิสูจน์อักษร, วิเคราะห์คุณภาพ, และปรับปรุงงานเขียนภาษาไทยของคุณ")
@@ -208,7 +201,7 @@ if uploaded_file:
             doc = Document(io.BytesIO(uploaded_file.getvalue()))
             st.session_state.input_text = "\n".join([p.text for p in doc.paragraphs])
         st.success("อ่านไฟล์เรียบร้อยแล้ว!")
-        st.session_state.corrected_text, st.session_state.explanation, st.session_state.analysis_results = "", "", None
+        clear_all_states() # ล้างผลลัพธ์เก่าเมื่ออัปโหลดไฟล์ใหม่
     except Exception as e:
         st.error(f"ไม่สามารถอ่านไฟล์ได้: {e}")
 
@@ -222,10 +215,8 @@ with col1:
         char_count, word_count = len(input_text), len(input_text.split())
         st.caption(f"จำนวนตัวอักษร: {char_count} | จำนวนคำ (โดยประมาณ): {word_count}")
     with button_col:
-        if st.button("🧹 ล้าง", use_container_width=True, help="ล้างข้อความทั้งหมด"):
-            st.session_state.input_text = ""
-            st.session_state.corrected_text, st.session_state.explanation, st.session_state.analysis_results = "", "", None
-            st.rerun()
+        # --- *** แก้ไขปุ่มล้างให้ใช้ on_click *** ---
+        st.button("🧹 ล้าง", use_container_width=True, help="ล้างข้อความทั้งหมด", on_click=clear_all_states)
             
     st.markdown("---")
     
@@ -272,7 +263,7 @@ if st.session_state.explanation:
         st.markdown(st.session_state.explanation)
     
     download_cols = st.columns(2)
-    download_cols[0].download_button("📥 ดาวน์โหลดฉบับแก้ไข (.txt)", st.session_state.corrected_text, "corrected_text.txt", use_container_width=True)
+    download_cols[0].download_button("📥 ดาวน์โหลดฉบับแก้ไข (.txt)", st.session_state.corrected_text, "corrected.txt", use_container_width=True)
     download_cols[1].download_button("📥 ดาวน์โหลดคำอธิบาย (.txt)", st.session_state.explanation, "explanation.txt", use_container_width=True)
 
 st.divider()
