@@ -55,7 +55,6 @@ def call_gemini_api(prompt: str, api_key: str):
         return None
 
 def get_proofread_result(text_to_check: str, api_key: str, style: str, dictionary: set):
-    # ... (โค้ดส่วนนี้เหมือนเดิมทุกประการ) ...
     style_instruction = "ปรับสำนวนการเขียนให้สละสลวย, ชัดเจน, และเป็นธรรมชาติ เหมาะสำหรับภาษาเขียนที่เป็นทางการ"
     if style == "ทั่วไป (Casual)":
         style_instruction = "ปรับสำนวนการเขียนให้อ่านง่าย เป็นธรรมชาติ เหมือนการสนทนาทั่วไป แต่ยังคงความถูกต้องทางไวยากรณ์"
@@ -94,7 +93,6 @@ def get_proofread_result(text_to_check: str, api_key: str, style: str, dictionar
     return None, None
 
 def get_analysis_result(text_to_check: str, api_key: str):
-    # ... (โค้ดส่วนนี้เหมือนเดิมทุกประการ) ...
     prompt = f"""
     คุณคือ นักวิเคราะห์เนื้อหา (Content Analyst) วิเคราะห์ข้อความต่อไปนี้และให้ผลลัพธ์ตามหัวข้อ
     **ข้อความที่ต้องการวิเคราะห์:** --- {text_to_check} ---
@@ -139,8 +137,7 @@ init_session_state()
 # --- ส่วนของหน้าตาโปรแกรม (Streamlit UI) ---
 with st.sidebar:
     st.title("เครื่องมือและตัวเลือก")
-
-    # 1. พจนานุกรมส่วนตัว
+    
     st.subheader("📚 พจนานุกรมส่วนตัว")
     with st.form("dict_form", clear_on_submit=True):
         new_word = st.text_input("เพิ่มคำที่ต้องการยกเว้น")
@@ -162,7 +159,6 @@ with st.sidebar:
     
     st.divider()
 
-    # 2. ประวัติการทำงาน (Log)
     with st.expander("📝 ประวัติการทำงาน (Log)", expanded=False):
         logs = load_from_file(LOG_FILE)
         if logs:
@@ -176,7 +172,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 3. ตั้งค่า API (ล่างสุดและซ่อนอยู่)
     with st.expander("⚙️ ตั้งค่า API", expanded=False):
         password_input = st.text_input("รหัสผ่าน", type="password", key="pwd_input")
         if st.button("ปลดล็อก"):
@@ -187,13 +182,15 @@ with st.sidebar:
                 st.session_state.authenticated = False
                 st.error("รหัสผ่านไม่ถูกต้อง")
         
-        # --- *** แก้ไขส่วนนี้: จะแสดงช่องใส่คีย์ก็ต่อเมื่อยืนยันตัวตนแล้วเท่านั้น *** ---
+        # --- *** แก้ไขส่วนนี้ *** ---
         if st.session_state.authenticated:
             st.info("คุณสามารถแก้ไข API Key ได้แล้ว")
-            st.session_state.api_key = st.text_input(
+            # การใช้ key จะทำให้ Streamlit จัดการค่าและซ่อนมันโดยอัตโนมัติ
+            # ค่าที่ผู้ใช้พิมพ์จะถูกอัปเดตลงใน st.session_state.api_key
+            st.text_input(
                 "Google AI API Key", 
                 type="password",
-                value=st.session_state.api_key # ใช้ค่าจาก session_state
+                key="api_key" 
             )
         else:
             st.warning("กรุณาปลดล็อกเพื่อดูและแก้ไข API Key")
@@ -201,7 +198,6 @@ with st.sidebar:
 st.title("✍️ ผู้ช่วยนักเขียน AI อัจฉริยะ")
 st.markdown("พิสูจน์อักษร, วิเคราะห์คุณภาพ, และปรับปรุงงานเขียนภาษาไทยของคุณ")
 
-# ... (ส่วน UI หลักที่เหลือเหมือนเดิมทุกประการ) ...
 uploaded_file = st.file_uploader("หรืออัปโหลดเอกสาร (.txt / .docx)", type=['txt', 'docx'])
 if uploaded_file:
     try:
@@ -232,12 +228,11 @@ with col1:
     st.write("**เครื่องมือควบคุม:**")
     control_cols = st.columns([1.5, 2.5, 2.5])
     editing_style = control_cols[0].selectbox("สไตล์การแก้", ("ทางการ (Formal)", "ทั่วไป (Casual)"), label_visibility="collapsed")
-    api_key_to_use = st.session_state.api_key
 
     if control_cols[1].button("✅ ตรวจพิสูจน์อักษร", type="primary", use_container_width=True):
-        if input_text and api_key_to_use:
+        if input_text and st.session_state.api_key:
             with st.spinner("AI กำลังตรวจพิสูจน์อักษร..."):
-                corrected, explanation = get_proofread_result(input_text, api_key_to_use, editing_style, st.session_state.dictionary)
+                corrected, explanation = get_proofread_result(input_text, st.session_state.api_key, editing_style, st.session_state.dictionary)
             st.session_state.corrected_text = corrected or ""
             st.session_state.explanation = explanation or ""
             st.session_state.analysis_results = None
@@ -246,9 +241,9 @@ with col1:
             st.warning("กรุณาป้อนข้อความและ API Key")
 
     if control_cols[2].button("✨ วิเคราะห์บทความ", use_container_width=True):
-        if input_text and api_key_to_use:
+        if input_text and st.session_state.api_key:
             with st.spinner("AI กำลังวิเคราะห์บทความ..."):
-                summary, tone, readability = get_analysis_result(input_text, api_key_to_use)
+                summary, tone, readability = get_analysis_result(input_text, st.session_state.api_key)
             st.session_state.analysis_results = {"summary": summary, "tone": tone, "readability": readability}
             st.session_state.corrected_text, st.session_state.explanation = "", ""
             st.rerun()
