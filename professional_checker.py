@@ -32,7 +32,7 @@ def save_dictionary(words):
             f.write(f"{word}\n")
 
 # --- ส่วนของการเชื่อมต่อกับ Gemini API ---
-CORRECT_PASSWORD_HASH = "8c2e3c846b41be4a5e37349a7c36a254"  # MD5 hash for 'Ewhale@123'
+CORRECT_PASSWORD_HASH = "dc32ae59ec94f05bfe110b4aa7524db9"  # MD5 hash ใหม่
 
 @st.cache_data(show_spinner=False)
 def call_gemini_api(prompt: str, api_key: str):
@@ -61,7 +61,7 @@ def get_proofread_result(text_to_check: str, api_key: str, style: str, dictionar
     **คำสั่ง:**
     1. **แก้ไข:** ตรวจหาและแก้ไขข้อผิดพลาดทั้งหมด (การสะกด, ไวยากรณ์, เว้นวรรค, ใช้คำผิด)
     2. **ปรับสำนวน:** {style_instruction}
-    3. **สร้างรายงาน:** สรุปรายการแก้ไข โดยระบุ "คำเดิม", "แก้ไขเป็น", และ "เหตุผล"
+    3. **สร้างรายงาน:** สรุปรายการแก้ไขทั้งหมด โดยระบุ "คำเดิม", "แก้ไขเป็น", และ "เหตุผล"
     4. {dictionary_instruction}
     **ข้อความต้นฉบับ:**
     ---
@@ -96,8 +96,8 @@ def get_analysis_result(text_to_check: str, api_key: str):
     ---
     **รูปแบบผลลัพธ์:**
     [SUMMARY_START]<สรุปใจความสำคัญ 2-3 ประโยค>[SUMMARY_END]
-    [TONE_START]<วิเคราะห์โทนโดยรวมของเนื้อหา พร้อมเหตุผล>[TONE_END]
-    [READABILITY_START]<ให้คะแนนความน่าอ่านจาก 1-10 พร้อมคำแนะนำ>[READABILITY_END]
+    [TONE_START]<วิเคราะห์โทนโดยรวมของเนื้อหา (เช่น ทางการ, เป็นกันเอง, เชิงบวก) พร้อมเหตุผล>[TONE_END]
+    [READABILITY_START]<ให้คะแนนความน่าอ่านจาก 1 ถึง 10 (1=อ่านยาก, 10=อ่านง่าย) พร้อมคำแนะนำ>[READABILITY_END]
     """
     response_text = call_gemini_api(prompt, api_key)
     if response_text:
@@ -125,46 +125,51 @@ init_session_state()
 
 # --- ส่วนของหน้าตาโปรแกรม (Streamlit UI) ---
 with st.sidebar:
-    st.title("⚙️ ตั้งค่าและเครื่องมือ")
-    
-    # --- ส่วน API Key ที่พับเก็บได้ ---
-    with st.expander("API Key Configuration", expanded=False):
-        password_input = st.text_input("รหัสผ่านสำหรับแก้ไขคีย์", type="password")
-        if st.button("ยืนยันรหัสผ่าน"):
+    # --- *** สร้าง Expander หลักเพื่อพับเก็บทุกอย่าง *** ---
+    with st.expander("⚙️ ตั้งค่าและเครื่องมือ", expanded=False):
+        st.subheader("ยืนยันตัวตนเพื่อตั้งค่า")
+        password_input = st.text_input("รหัสผ่าน", type="password", key="pwd_input")
+        if st.button("ปลดล็อก"):
             if password_input and hashlib.md5(password_input.encode()).hexdigest() == CORRECT_PASSWORD_HASH:
                 st.session_state.authenticated = True
-                st.success("ยืนยันสำเร็จ!")
+                st.success("ปลดล็อกสำเร็จ!")
             else:
                 st.session_state.authenticated = False
                 st.error("รหัสผ่านไม่ถูกต้อง")
-                
-        api_key_input = st.text_input(
-            "Google AI API Key", type="password", 
-            value="AIzaSyCFcpERGjX-Y890v61yn7RbQHNsTqg0dTQ",
-            disabled=not st.session_state.authenticated
-        )
-        st.caption("รับคีย์ได้ที่ [aistudio.google.com](https://aistudio.google.com/)")
-    
-    st.divider()
-    
-    st.subheader("📚 พจนานุกรมส่วนตัว")
-    with st.form("dict_form", clear_on_submit=True):
-        new_word = st.text_input("เพิ่มคำที่ต้องการยกเว้น")
-        submitted = st.form_submit_button("เพิ่มคำ")
-        if submitted and new_word and new_word not in st.session_state.dictionary:
-            st.session_state.dictionary.add(new_word)
-            save_dictionary(st.session_state.dictionary)
-            st.success(f"เพิ่มคำว่า '{new_word}' เรียบร้อยแล้ว")
-                
-    if st.session_state.dictionary:
-        with st.expander("แสดง/ลบคำในพจนานุกรม"):
-            for word in sorted(list(st.session_state.dictionary)):
-                c1, c2 = st.columns([3, 1])
-                c1.write(f"- {word}")
-                if c2.button("ลบ", key=f"del_{word}", use_container_width=True):
-                    st.session_state.dictionary.remove(word)
-                    save_dictionary(st.session_state.dictionary)
-                    st.rerun()
+        
+        # --- *** ส่วน API Key จะแสดงก็ต่อเมื่อยืนยันตัวตนผ่านแล้ว *** ---
+        if st.session_state.authenticated:
+            with st.container(border=True):
+                st.subheader("API Key Configuration")
+                api_key_input = st.text_input(
+                    "Google AI API Key", type="password",
+                    value="AIzaSyCFcpERGjX-Y890v61yn7RbQHNsTqg0dTQ"
+                )
+                st.caption("รับคีย์ได้ที่ [aistudio.google.com](https://aistudio.google.com/)")
+        else:
+            # ซ่อน API Key input ไว้ แต่ยังต้องสร้างเพื่อไม่ให้ Streamlit error
+            api_key_input = st.text_input("Google AI API Key", value="AIzaSyCFcpERGjX-Y890v61yn7RbQHNsTqg0dTQ", type="password", disabled=True, label_visibility="hidden")
+
+        st.divider()
+        
+        st.subheader("📚 พจนานุกรมส่วนตัว")
+        with st.form("dict_form", clear_on_submit=True):
+            new_word = st.text_input("เพิ่มคำที่ต้องการยกเว้น")
+            submitted = st.form_submit_button("เพิ่มคำ")
+            if submitted and new_word and new_word not in st.session_state.dictionary:
+                st.session_state.dictionary.add(new_word)
+                save_dictionary(st.session_state.dictionary)
+                st.success(f"เพิ่มคำว่า '{new_word}'")
+                    
+        if st.session_state.dictionary:
+            with st.expander("แสดง/ลบคำในพจนานุกรม"):
+                for word in sorted(list(st.session_state.dictionary)):
+                    c1, c2 = st.columns([3, 1])
+                    c1.write(f"- {word}")
+                    if c2.button("ลบ", key=f"del_{word}", use_container_width=True):
+                        st.session_state.dictionary.remove(word)
+                        save_dictionary(st.session_state.dictionary)
+                        st.rerun()
 
 st.title("✍️ ผู้ช่วยนักเขียน AI อัจฉริยะ")
 st.markdown("พิสูจน์อักษร, วิเคราะห์คุณภาพ, และปรับปรุงงานเขียนภาษาไทยของคุณ")
@@ -187,7 +192,6 @@ with col1:
     st.subheader("ข้อความต้นฉบับ")
     input_text = st.text_area("ป้อนข้อความ...", height=300, key="input_text")
     
-    # --- ส่วนแสดงตัวนับและปุ่มล้าง (ย้ายมาไว้ตรงนี้) ---
     caption_col, button_col = st.columns([4, 1])
     with caption_col:
         char_count, word_count = len(input_text), len(input_text.split())
@@ -195,9 +199,7 @@ with col1:
     with button_col:
         if st.button("🧹 ล้าง", use_container_width=True, help="ล้างข้อความทั้งหมด"):
             st.session_state.input_text = ""
-            st.session_state.corrected_text = ""
-            st.session_state.explanation = ""
-            st.session_state.analysis_results = None
+            st.session_state.corrected_text, st.session_state.explanation, st.session_state.analysis_results = "", "", None
             st.rerun()
             
     st.markdown("---")
